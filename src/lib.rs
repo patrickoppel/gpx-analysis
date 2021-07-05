@@ -152,32 +152,53 @@ pub fn read_gpx(file: File) -> Vec<GPX> {
     gpx_points
 }
 
-pub fn get_elev_gain(file:File) {
-    let gpx = read_gpx(file);
-    // let gpx = read_tcx(file);
-    let mut elev = gpx[0].altitude;
-    let mut gain: f64 = 0.0;
+// pub fn get_elev_gain(file:File) {
+//     let gpx = read_gpx(file);
+//     // let gpx = read_tcx(file);
+//     let mut elev = gpx[0].altitude;
+//     let mut gain: f64 = 0.0;
+//     for g in gpx {
+//         if g.altitude >= elev + 0.4 {
+//             gain += g.altitude - elev;
+//         }
+//         elev = g.altitude;
+//     }
+
+//     println!("{:?}",gain);
+// }
+
+pub fn get_distance(s: &str) {
+    let gpx = match s.find("gpx") {
+        Some(_) => {            
+            read_gpx(File::open(s).unwrap())
+        },
+        None => {
+            match s.find("tcx") {
+                Some(_) => {
+                    read_tcx(File::open(s).unwrap())
+                },
+                None => panic!("Unknown file extension"),
+            }
+        }        
+    };
+    let mut start = Location::new(gpx[0].latitude,gpx[0].longitude);
+    let mut elev: f64 = gpx[0].altitude;
+    let mut dist: f64 = 0.0;
+    let mut gain: f64 = 0.0;    
     for g in gpx {
-        if g.altitude >= elev + 0.4 {
+        let stop = Location::new(g.latitude,g.longitude);
+        let dx = stop.distance_to(&start).unwrap().meters();
+        dist += dx;
+        // elevation gain beq .5% incline
+        if g.altitude-elev >= 0.0085*dx {
             gain += g.altitude - elev;
         }
         elev = g.altitude;
-    }
-
-    println!("{:?}",gain);
-}
-
-pub fn get_distance(file:File) {
-    let gpx = read_gpx(file);
-    let mut start = Location::new(gpx[0].latitude,gpx[0].longitude);
-    let mut dist: f64 = 0.0;
-    for g in gpx {
-        let stop = Location::new(g.latitude,g.longitude);
-        dist += stop.distance_to(&start).unwrap().meters();
         start = stop;
     }
 
-    println!("{:?}",dist);    
+    println!("{:?}",dist);  
+    println!("{:?}",gain);  
 }
 
 // pub fn dist_and_elev(file:File) {
