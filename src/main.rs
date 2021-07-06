@@ -1,18 +1,22 @@
-use std::fs::File;
+use std::fs;
 use std::io::Error;
-use gpx_project::read_gpx;
-use gpx_project::read_tcx;
-// use gpx_project::get_elev_gain;
 use gpx_project::get_distance;
 
 fn main() -> Result<(),Error> {
-    // let file = File::open("./125k M7 loop.gpx")?;
-    // Ok(read_gpx(file))
+    let paths = fs::read_dir("./files").unwrap();
 
-    // let file2 = File::open("./125k M7 loop.tcx")?;
-    // Ok(read_tcx(file2))
+    let mut st: String = "Name,Distance,Elevation Gain\n".to_string();
 
-    // let file3 = File::open("./125k M7 loop.gpx")?;
-    // Ok(get_elev_gain(file3))
-    Ok(get_distance("./125k M7 loop.gpx"))
+    for path in paths {
+        // println!("{:?}",path.unwrap().path());
+        let out = get_distance(path.unwrap().path().to_str().unwrap());        
+        
+        st.push_str(&out.name);
+        st.push(',');
+        st.push_str(&out.distance.to_string());
+        st.push(',');
+        st.push_str(&out.elevation.to_string());
+        st.push('\n')
+    }
+    Ok(fs::write("./GPX-files.csv",st)?)
 }

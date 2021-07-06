@@ -2,31 +2,16 @@
 
 use std::fs::File;
 use std::io::{self, BufRead};
-use std::path::Path;
-use chrono::{DateTime,Utc,FixedOffset,TimeZone};
+use chrono::{DateTime,Utc};
 use geoutils::Location;
-use std::error;
-// use chrono::Utc;
-// use chrono::FixedOffset;
-// use chrono::TimeZone;
 
 use crate::TcxLines::*;
 
-// pub struct Position {
-//     latitude: f64,
-//     longitude: f64,
-//     altitude: f64,
-// }
-
-// pub struct GPX {
-//     position: Position,
-// }
-
-// pub struct TCX {
-//     time: DateTime<Utc>,
-//     position: Position,
-//     distance: f64,    
-// }
+pub struct Route {
+    pub name: String,
+    pub distance: f64,
+    pub elevation: f64,
+}
 
 pub struct GPX {
     latitude: f64,
@@ -48,19 +33,25 @@ enum TcxLines {
     Dis,
 }
 
-pub fn read_tcx(file: File) -> Vec<GPX> {
+pub fn read_tcx(file: File) -> (String,Vec<GPX>) {
     // let mut tcx_points: Vec<TCX> = Vec::new();
     let mut gpx_points: Vec<GPX> = Vec::new(); 
+    let mut name: String = "".to_string();
     let mut lati: f64 = 0.0;
     let mut long: f64 = 0.0;
     let mut alti: f64 = 0.0;
     let mut time: DateTime::<Utc>= Utc::now();
     let mut pt: TcxLines = Tim;
+    let mut namefound = false;
     if let Ok(lines) = read_lines(file) {
         for line_iter in lines {   
             let line = line_iter.unwrap();      
             match pt {
                 Tim => {
+                    if line.find("<Name>") != None && !namefound {
+                        name.push_str(&line[line.find(">").unwrap()+1..line.find("/").unwrap()-1]);
+                        namefound = true;
+                    }
                     if line.find("<Time>") != None {
                         time = DateTime::parse_from_rfc3339(&line[line.find(">").unwrap()+1..line.find("/").unwrap()-1]).unwrap().with_timezone(&Utc);
                         pt = Lat;
@@ -86,7 +77,7 @@ pub fn read_tcx(file: File) -> Vec<GPX> {
                 }
                 Dis => {
                     if line.find("Distance") != None {
-                        let distance: f64 = line[line.find(">").unwrap()+1..line.find("/").unwrap()-2].parse().unwrap();
+                        let _distance: f64 = line[line.find(">").unwrap()+1..line.find("/").unwrap()-2].parse().unwrap();
                         pt = Tim;
                         // let gps = GPX{
                         //     latitude: lati,
@@ -106,15 +97,17 @@ pub fn read_tcx(file: File) -> Vec<GPX> {
     }
     // println!("{}",tcx_points.len());
     // tcx_points
-    println!("{}",gpx_points.len());
-    gpx_points
+    // println!("{}",gpx_points.len());
+    (name,gpx_points)
 }
 
-pub fn read_gpx(file: File) -> Vec<GPX> {
+pub fn read_gpx(file: File) -> (String,Vec<GPX>) {
     let mut gpx_points: Vec<GPX> = Vec::new();    
+    let mut name: String = "".to_string();
     let mut lat: f64 = 0.0;
     let mut lon: f64 = 0.0;
     let mut pt = false;
+    let mut namefound = false;
     if let Ok(lines) = read_lines(file) {
         for line_iter in lines {   
             let line = line_iter.unwrap();      
@@ -130,7 +123,11 @@ pub fn read_gpx(file: File) -> Vec<GPX> {
                 lat = 0.0;
                 lon = 0.0;
                 pt = false;
-            }  else {                
+            }  else {               
+                if line.find("<name>") != None && !namefound {
+                    name.push_str(&line[line.find(">").unwrap()+1..line.find("/").unwrap()-1]);
+                    namefound = true;
+                } 
                 match line.find("lat") {
                     Some(x) => {
                         match line.find("lon") {
@@ -148,8 +145,8 @@ pub fn read_gpx(file: File) -> Vec<GPX> {
         }
     }
 
-    println!("{}",gpx_points.len());
-    gpx_points
+    // println!("{}",gpx_points.len());
+    (name,gpx_points)
 }
 
 // pub fn get_elev_gain(file:File) {
@@ -167,8 +164,9 @@ pub fn read_gpx(file: File) -> Vec<GPX> {
 //     println!("{:?}",gain);
 // }
 
-pub fn get_distance(s: &str) {
-    let gpx = match s.find("gpx") {
+pub fn get_distance(s: &str) -> Route {
+    // let mut output: Vec<f64> = Vec::new();
+    let (name,gpx) = match s.find("gpx") {
         Some(_) => {            
             read_gpx(File::open(s).unwrap())
         },
@@ -189,7 +187,7 @@ pub fn get_distance(s: &str) {
         let stop = Location::new(g.latitude,g.longitude);
         let dx = stop.distance_to(&start).unwrap().meters();
         dist += dx;
-        // elevation gain beq .5% incline
+        // elevation gain beq .85% incline
         if g.altitude-elev >= 0.0085*dx {
             gain += g.altitude - elev;
         }
@@ -197,8 +195,17 @@ pub fn get_distance(s: &str) {
         start = stop;
     }
 
-    println!("{:?}",dist);  
-    println!("{:?}",gain);  
+    Route{
+        name,
+        distance: (dist/10.0).round()/100.0,
+        elevation: (gain*100.0).round()/100.0,
+    }
+    // println!("{:?}",dist);  
+    // println!("{:?}",gain);  
+
+    // output.push(dist);
+    // output.push(gain);
+    // output
 }
 
 // pub fn dist_and_elev(file:File) {
