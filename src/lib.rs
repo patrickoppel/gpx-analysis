@@ -253,42 +253,16 @@ fn read_lines(file: File) -> io::Result<io::Lines<io::BufReader<File>>> {
 }
 
 fn get_direction(stop:Location,start:Location) -> String {
-    let mut dir: String = "".to_string();
-    // let x = Location::new(stop.latitude()-start.latitude(),stop.longitude()-start.longitude());
-    let x = (stop.latitude()-start.latitude()).atan2(stop.longitude()-start.longitude())/PI;
-    println!("{:?}",x);
-    if x > -7.0/8.0 {
-        if x > -5.0/8.0 {
-            if x > -3.0/8.0 {
-                if x > -1.0/8.0 {
-                    if x > 1.0/8.0 {
-                        if x > 3.0/8.0 {
-                            if x > 5.0/8.0 {
-                                if x > 7.0/8.0 {
-                                    dir.push_str("W");
-                                } else {
-                                    dir.push_str("NW");
-                                }
-                            } else {
-                                dir.push_str("N");
-                            }
-                        } else {
-                            dir.push_str("NE");
-                        }
-                    } else {
-                        dir.push_str("E");
-                    }
-                } else {
-                    dir.push_str("SE");
-                } 
-            } else {
-                dir.push_str("S");
-            }
-        } else {
-            dir.push_str("SW");
-        }
-    } else {
-        dir.push_str("W");
-    }
-    dir    
+    match (stop.latitude()-start.latitude()).atan2(stop.longitude()-start.longitude())/PI*8.0 {
+        -8.0..=-7.0 => "W".to_string(),
+        -7.0..=-5.0 => "SW".to_string(),
+        -5.0..=-3.0 => "S".to_string(),
+        -3.0..=-1.0 => "SE".to_string(),
+        -1.0..=1.0 => "E".to_string(),
+        1.0..=3.0 => "NE".to_string(),
+        3.0..=5.0 => "N".to_string(),
+        5.0..=7.0 => "NW".to_string(),
+        7.0..=8.0 => "W".to_string(),
+        _ => "N/A".to_string(),
+    }   
 }
