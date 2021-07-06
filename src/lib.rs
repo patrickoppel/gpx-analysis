@@ -4,6 +4,7 @@ use std::fs::File;
 use std::io::{self, BufRead};
 use chrono::{DateTime,Utc};
 use geoutils::Location;
+use core::f64::consts::PI;
 
 use crate::TcxLines::*;
 
@@ -11,6 +12,9 @@ pub struct Route {
     pub name: String,
     pub distance: f64,
     pub elevation: f64,
+    pub gradient: f64,
+    pub time: f64,
+    pub direction: String,
 }
 
 pub struct GPX {
@@ -33,16 +37,18 @@ enum TcxLines {
     Dis,
 }
 
-pub fn read_tcx(file: File) -> (String,Vec<GPX>) {
-    // let mut tcx_points: Vec<TCX> = Vec::new();
-    let mut gpx_points: Vec<GPX> = Vec::new(); 
+pub fn read_tcx(file: File) -> (String,f64,Vec<TCX>) {
+    let mut tcx_points: Vec<TCX> = Vec::new();
+    // let mut gpx_points: Vec<GPX> = Vec::new(); 
     let mut name: String = "".to_string();
+    let mut totaltime: f64 = 0.0;
     let mut lati: f64 = 0.0;
     let mut long: f64 = 0.0;
     let mut alti: f64 = 0.0;
     let mut time: DateTime::<Utc>= Utc::now();
     let mut pt: TcxLines = Tim;
     let mut namefound = false;
+    let mut totaltimefound = false;
     if let Ok(lines) = read_lines(file) {
         for line_iter in lines {   
             let line = line_iter.unwrap();      
@@ -51,6 +57,10 @@ pub fn read_tcx(file: File) -> (String,Vec<GPX>) {
                     if line.find("<Name>") != None && !namefound {
                         name.push_str(&line[line.find(">").unwrap()+1..line.find("/").unwrap()-1]);
                         namefound = true;
+                    }
+                    if line.find("<TotalTimeSeconds>") != None && !totaltimefound {
+                        totaltime = line[line.find(">").unwrap()+1..line.find("/").unwrap()-1].parse().unwrap();
+                        totaltimefound = true;
                     }
                     if line.find("<Time>") != None {
                         time = DateTime::parse_from_rfc3339(&line[line.find(">").unwrap()+1..line.find("/").unwrap()-1]).unwrap().with_timezone(&Utc);
@@ -77,15 +87,15 @@ pub fn read_tcx(file: File) -> (String,Vec<GPX>) {
                 }
                 Dis => {
                     if line.find("Distance") != None {
-                        let _distance: f64 = line[line.find(">").unwrap()+1..line.find("/").unwrap()-2].parse().unwrap();
+                        let distance: f64 = line[line.find(">").unwrap()+1..line.find("/").unwrap()-2].parse().unwrap();
                         pt = Tim;
-                        // let gps = GPX{
-                        //     latitude: lati,
-                        //     longitude: long,
-                        //     altitude: alti,
-                        // };
-                        // tcx_points.append(&mut vec!(TCX{time, gps, distance}));
-                        gpx_points.append(&mut vec!(GPX{latitude: lati, longitude: long, altitude: alti}));
+                        let gps = GPX{
+                            latitude: lati,
+                            longitude: long,
+                            altitude: alti,
+                        };
+                        tcx_points.append(&mut vec!(TCX{time, gps, distance}));
+                        // gpx_points.append(&mut vec!(GPX{latitude: lati, longitude: long, altitude: alti}));
                         lati = 0.0;
                         long = 0.0;
                         alti = 0.0;
@@ -98,7 +108,7 @@ pub fn read_tcx(file: File) -> (String,Vec<GPX>) {
     // println!("{}",tcx_points.len());
     // tcx_points
     // println!("{}",gpx_points.len());
-    (name,gpx_points)
+    (name,totaltime,tcx_points)
 }
 
 pub fn read_gpx(file: File) -> (String,Vec<GPX>) {
@@ -114,11 +124,6 @@ pub fn read_gpx(file: File) -> (String,Vec<GPX>) {
             if pt {
                 let alt = line[line.find(">").unwrap()+1..line.find("/").unwrap()-2].parse().unwrap();
 
-                // let pos = Position{
-                //     latitude: lat,
-                //     longitude: lon,
-                //     altitude: alt,
-                // };
                 gpx_points.append(&mut vec!(GPX{latitude: lat, longitude: lon, altitude: alt}));
                 lat = 0.0;
                 lon = 0.0;
@@ -149,77 +154,141 @@ pub fn read_gpx(file: File) -> (String,Vec<GPX>) {
     (name,gpx_points)
 }
 
-// pub fn get_elev_gain(file:File) {
-//     let gpx = read_gpx(file);
-//     // let gpx = read_tcx(file);
-//     let mut elev = gpx[0].altitude;
-//     let mut gain: f64 = 0.0;
-//     for g in gpx {
-//         if g.altitude >= elev + 0.4 {
-//             gain += g.altitude - elev;
-//         }
-//         elev = g.altitude;
-//     }
-
-//     println!("{:?}",gain);
-// }
-
 pub fn get_distance(s: &str) -> Route {
-    // let mut output: Vec<f64> = Vec::new();
-    let (name,gpx) = match s.find("gpx") {
+    let mut dist: f64 = 0.0;
+    let mut gain: f64 = 0.0;
+    let mut grad: f64 = 0.0;
+    let mut direction = "".to_string();
+    match s.find("gpx") {
         Some(_) => {            
-            read_gpx(File::open(s).unwrap())
+            let (name,gpx) = read_gpx(File::open(s).unwrap());
+            let mut start = Location::new(gpx[0].latitude,gpx[0].longitude);
+            let mut elev: f64 = gpx[0].altitude;
+            let middle = Location::new(gpx[(((gpx.len()/2) as f64).floor())as usize].latitude,gpx[(((gpx.len()/2) as f64).floor())as usize].longitude);
+            let start0 = start;
+            let mut stop = start;
+            for g in gpx {
+                stop = Location::new(g.latitude,g.longitude);
+                let dx = stop.distance_to(&start).unwrap().meters();
+                dist += dx;
+                // elevation gain beq .85% incline
+                if g.altitude-elev >= 0.0085*dx {
+                    gain += g.altitude - elev;
+                    grad += dx;
+                }
+                elev = g.altitude;
+                start = stop;                
+            }
+            // Time estimate 1h/26.5km + 10min/250m
+            let distance = (dist/10.0).round()/100.0;
+            let elevation = (gain*100.0).round()/100.0;
+            let time = distance/26.5*3600.0 + elevation/250.0*600.0;     
+            let gradient = (elevation/grad*10000.0).round()/100.0;
+            let startstop = stop.distance_to(&start0).unwrap().meters();
+            let startmiddle = middle.distance_to(&start0).unwrap().meters();
+            if  startstop > 2000.0 && startstop > startmiddle {
+                direction.push_str(&get_direction(stop,start0));
+            } else {
+                direction.push_str(&get_direction(middle,start0));
+            }
+            Route{
+                name,
+                distance,
+                elevation,
+                gradient,
+                time,
+                direction,
+            }
         },
         None => {
             match s.find("tcx") {
-                Some(_) => {
-                    read_tcx(File::open(s).unwrap())
+                Some(_) => {                    
+                    let (name,totaltime,tcx) = read_tcx(File::open(s).unwrap());
+                    let mut start = Location::new(tcx[0].gps.latitude,tcx[0].gps.longitude);
+                    let middle = Location::new(tcx[(((tcx.len()/2) as f64).floor())as usize].gps.latitude,tcx[(((tcx.len()/2) as f64).floor())as usize].gps.longitude);
+                    let start0 = start;
+                    let mut stop = start;
+                    let mut elev: f64 = tcx[0].gps.altitude;                    
+
+                    for t in tcx {
+                        stop = Location::new(t.gps.latitude,t.gps.longitude);
+                        let dx = stop.distance_to(&start).unwrap().meters();
+                        dist += dx;
+                        // elevation gain beq .85% incline
+                        if t.gps.altitude-elev >= 0.0085*dx {
+                            gain += t.gps.altitude - elev;
+                            grad += dx;
+                        }
+                        elev = t.gps.altitude;
+                        start = stop;                        
+                    }            
+                    let elevation = (gain*100.0).round()/100.0;
+                    let gradient = (elevation/grad*10000.0).round()/100.0;
+                    let startstop = stop.distance_to(&start0).unwrap().meters();
+                    let startmiddle = middle.distance_to(&start0).unwrap().meters();
+                    if  startstop > 2000.0 && startstop > startmiddle {
+                        direction.push_str(&get_direction(stop,start0));
+                    } else {
+                        direction.push_str(&get_direction(middle,start0));
+                    }
+                    Route{
+                        name,
+                        distance: (dist/10.0).round()/100.0,
+                        elevation,
+                        gradient,
+                        time: totaltime,
+                        direction,
+                    }
                 },
                 None => panic!("Unknown file extension"),
             }
         }        
-    };
-    let mut start = Location::new(gpx[0].latitude,gpx[0].longitude);
-    let mut elev: f64 = gpx[0].altitude;
-    let mut dist: f64 = 0.0;
-    let mut gain: f64 = 0.0;    
-    for g in gpx {
-        let stop = Location::new(g.latitude,g.longitude);
-        let dx = stop.distance_to(&start).unwrap().meters();
-        dist += dx;
-        // elevation gain beq .85% incline
-        if g.altitude-elev >= 0.0085*dx {
-            gain += g.altitude - elev;
-        }
-        elev = g.altitude;
-        start = stop;
-    }
-
-    Route{
-        name,
-        distance: (dist/10.0).round()/100.0,
-        elevation: (gain*100.0).round()/100.0,
-    }
-    // println!("{:?}",dist);  
-    // println!("{:?}",gain);  
-
-    // output.push(dist);
-    // output.push(gain);
-    // output
+    }      
 }
-
-// pub fn dist_and_elev(file:File) {
-//     let gpx = match file.find(".gpx") {
-//         Some(x) => read_gpx(file),
-//         None => match file.find(".tcx") {
-//             Some(x) => read_tcx(file),
-//             None => panic!("Unknown file format"),
-//         }
-//     };
-// }
 
 fn read_lines(file: File) -> io::Result<io::Lines<io::BufReader<File>>> {
 // where P: AsRef<Path>, {
     // let file = File::open(filename)?;
     Ok(io::BufReader::new(file).lines())
+}
+
+fn get_direction(stop:Location,start:Location) -> String {
+    let mut dir: String = "".to_string();
+    // let x = Location::new(stop.latitude()-start.latitude(),stop.longitude()-start.longitude());
+    let x = (stop.latitude()-start.latitude()).atan2(stop.longitude()-start.longitude())/PI;
+    println!("{:?}",x);
+    if x > -7.0/8.0 {
+        if x > -5.0/8.0 {
+            if x > -3.0/8.0 {
+                if x > -1.0/8.0 {
+                    if x > 1.0/8.0 {
+                        if x > 3.0/8.0 {
+                            if x > 5.0/8.0 {
+                                if x > 7.0/8.0 {
+                                    dir.push_str("W");
+                                } else {
+                                    dir.push_str("NW");
+                                }
+                            } else {
+                                dir.push_str("N");
+                            }
+                        } else {
+                            dir.push_str("NE");
+                        }
+                    } else {
+                        dir.push_str("E");
+                    }
+                } else {
+                    dir.push_str("SE");
+                } 
+            } else {
+                dir.push_str("S");
+            }
+        } else {
+            dir.push_str("SW");
+        }
+    } else {
+        dir.push_str("W");
+    }
+    dir    
 }
