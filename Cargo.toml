@@ -8,4 +8,4 @@ edition = "2018"
 
 [dependencies]
 chrono = "0.4"
-geoutils = {path = "../geoutils"}
+geoutils = {git = "https://github.com/patrickoppel/geoutils.git", branch = "gpx-project"}
