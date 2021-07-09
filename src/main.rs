@@ -1,15 +1,16 @@
 use std::fs;
 use std::io::Error;
-use gpx_project::get_distance;
+use gpx_project::Route;
 
 fn main() -> Result<(),Error> {
-    let paths = fs::read_dir("./files").unwrap();
+    let paths = fs::read_dir("./files/routes/").unwrap();
 
     let mut st: String = "Name,Distance,Elevation Gain,Average Gradient,Total Time\n".to_string();
 
     for path in paths {
         // println!("{:?}",path.unwrap().path());
-        let mut out = get_distance(path.unwrap().path().to_str().unwrap());        
+        let mut out = Route::new();
+        out.get_info(path.unwrap().path().to_str().unwrap());        
         
         st.push_str(&out.name);
         st.push(',');
