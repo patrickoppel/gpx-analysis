@@ -158,7 +158,7 @@ pub fn get_distance(s: &str) -> Route {
     let mut dist: f64 = 0.0;
     let mut gain: f64 = 0.0;
     let mut grad: f64 = 0.0;
-    let mut direction = "".to_string();
+    let mut direction: String = "".to_string();
     match s.find("gpx") {
         Some(_) => {            
             let (name,gpx) = read_gpx(File::open(s).unwrap());
@@ -169,7 +169,7 @@ pub fn get_distance(s: &str) -> Route {
             let mut stop = start;
             for g in gpx {
                 stop = Location::new(g.latitude,g.longitude);
-                let dx = stop.distance_to(&start).unwrap().meters();
+                let dx = stop.distance_to(&start).unwrap().distance.meters();
                 dist += dx;
                 // elevation gain beq .85% incline
                 if g.altitude-elev >= 0.0085*dx {
@@ -184,12 +184,12 @@ pub fn get_distance(s: &str) -> Route {
             let elevation = (gain*100.0).round()/100.0;
             let time = distance/26.5*3600.0 + elevation/250.0*600.0;     
             let gradient = (elevation/grad*10000.0).round()/100.0;
-            let startstop = stop.distance_to(&start0).unwrap().meters();
-            let startmiddle = middle.distance_to(&start0).unwrap().meters();
+            let startstop = stop.distance_to(&start0).unwrap().distance.meters();
+            let startmiddle = middle.distance_to(&start0).unwrap().distance.meters();
             if  startstop > 2000.0 && startstop > startmiddle {
-                direction.push_str(&get_direction(stop,start0));
+                direction.push_str(&get_direction(stop.distance_to(&start0).unwrap().initial_bearing.unwrap()));
             } else {
-                direction.push_str(&get_direction(middle,start0));
+                direction.push_str(&get_direction(middle.distance_to(&start0).unwrap().initial_bearing.unwrap()));
             }
             Route{
                 name,
@@ -212,7 +212,7 @@ pub fn get_distance(s: &str) -> Route {
 
                     for t in tcx {
                         stop = Location::new(t.gps.latitude,t.gps.longitude);
-                        let dx = stop.distance_to(&start).unwrap().meters();
+                        let dx = stop.distance_to(&start).unwrap().distance.meters();
                         dist += dx;
                         // elevation gain beq .85% incline
                         if t.gps.altitude-elev >= 0.0085*dx {
@@ -224,12 +224,12 @@ pub fn get_distance(s: &str) -> Route {
                     }            
                     let elevation = (gain*100.0).round()/100.0;
                     let gradient = (elevation/grad*10000.0).round()/100.0;
-                    let startstop = stop.distance_to(&start0).unwrap().meters();
-                    let startmiddle = middle.distance_to(&start0).unwrap().meters();
+                    let startstop = stop.distance_to(&start0).unwrap().distance.meters();
+                    let startmiddle = middle.distance_to(&start0).unwrap().distance.meters();
                     if  startstop > 2000.0 && startstop > startmiddle {
-                        direction.push_str(&get_direction(stop,start0));
+                        direction.push_str(&get_direction(stop.distance_to(&start0).unwrap().initial_bearing.unwrap()));
                     } else {
-                        direction.push_str(&get_direction(middle,start0));
+                        direction.push_str(&get_direction(middle.distance_to(&start0).unwrap().initial_bearing.unwrap()));
                     }
                     Route{
                         name,
@@ -252,17 +252,32 @@ fn read_lines(file: File) -> io::Result<io::Lines<io::BufReader<File>>> {
     Ok(io::BufReader::new(file).lines())
 }
 
-fn get_direction(stop:Location,start:Location) -> String {
-    match (stop.latitude()-start.latitude()).atan2(stop.longitude()-start.longitude())/PI*8.0 {
-        -8.0..=-7.0 => "W".to_string(),
-        -7.0..=-5.0 => "SW".to_string(),
-        -5.0..=-3.0 => "S".to_string(),
-        -3.0..=-1.0 => "SE".to_string(),
-        -1.0..=1.0 => "E".to_string(),
-        1.0..=3.0 => "NE".to_string(),
-        3.0..=5.0 => "N".to_string(),
-        5.0..=7.0 => "NW".to_string(),
-        7.0..=8.0 => "W".to_string(),
-        _ => "N/A".to_string(),
-    }   
+// fn get_direction(stop:Location,start:Location) -> String {
+//     match (stop.latitude()-start.latitude()).atan2(stop.longitude()-start.longitude())/PI*8.0 {
+//         -8.0..=-7.0 => "W".to_string(),
+//         -7.0..=-5.0 => "SW".to_string(),
+//         -5.0..=-3.0 => "S".to_string(),
+//         -3.0..=-1.0 => "SE".to_string(),
+//         -1.0..=1.0 => "E".to_string(),
+//         1.0..=3.0 => "NE".to_string(),
+//         3.0..=5.0 => "N".to_string(),
+//         5.0..=7.0 => "NW".to_string(),
+//         7.0..=8.0 => "W".to_string(),
+//         _ => "N/A".to_string(),
+//     }   
+// }
+
+fn get_direction(bearing: f64) -> String {
+    match bearing {
+        0.0 ..= 22.5 => "S".to_string(),
+        22.5 ..= 67.5 => "SW".to_string(),
+        67.5 ..= 112.5 => "W".to_string(),
+        112.5 ..= 157.5 => "NW".to_string(),
+        157.5 ..= 202.5 => "N".to_string(),
+        202.5 ..= 247.5 => "NE".to_string(),
+        247.5 ..= 290.5 => "E".to_string(),
+        290.5 ..= 337.5 => "SE".to_string(),
+        337.5 ..= 360.0 => "S".to_string(),
+        _ => "".to_string(),
+    }
 }
